@@ -48,6 +48,36 @@ string Http_Parser::Get_Line(string data) {
 	return line;
 }
 
+void Http_Parser::pcap_init() {
+	pcap_t *handle;																	/* Session handle				 */
+	struct pcap_pkthdr *header;														/*								 */
+	char errbuf[PCAP_ERRBUF_SIZE];													/* Error string					 */
+	bpf_u_int32 mask = 0;															/* Our netmask					 */
+	bpf_u_int32 net = 0;															/* Our IP						 */
+	u_char *packet;																	/*				  				 */
+	pcap_if_t *alldevs, *d;															/*	 							 */
+	int i = 0, num;
+
+	if ((handle = pcap_open_live(d->name, BUFSIZ, PCAP_OPENFLAG_PROMISCUOUS, 1, errbuf)) == NULL) {	//장치이름, 패킷캡쳐부분, promiscuous mode, 시간, 에러버퍼
+		fprintf(stderr, "Couldn't open device %s: %s\n", d->name, errbuf);
+		return;
+	}
+
+
+}
+
+void task(pcap_t *handle, struct pcap_pkthdr *header, u_char *packet) {
+	int res;
+	while ((res = pcap_next_ex(handle, &header, (const u_char **)&packet)) >= 0) {
+		if (res == 0) continue;
+		else if (res == -1) {
+			cout << "pcap_next_ex Error !" << endl;
+			break;
+		}
+		else packet_hand(packet, header->caplen);
+	}
+}
+
 bool Http_Parser::request_Option(string method) {
 	if (method == "GET " ||
 		method == "POST " ||
@@ -76,13 +106,13 @@ void run(char **argv) {
 	Http_Parser hp;
 	hp.init(&request_Message);	hp.init(&response_Message);
 
-	hp.Get_Line(tmp_data);
+	//hp.Get_Line(tmp_data);
 }
 
 int main(int argc, char **argv) {
 
 	if (argc < 2 || argc > 2)
-		cout << argv[0] << " [Filepath]\n" << "Example : " << argv[0] << " sample_file\n";
+		cout << "Example : " << argv[0] << " sample_file\n";
 
 	while (1)
 		run(argv);
