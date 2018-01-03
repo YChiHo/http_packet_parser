@@ -1,12 +1,14 @@
-#pragma once
 #ifndef HTTP_PARSER_H
 #define HTTP_PARSER_H
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <regex>
+#include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <pcap/pcap.h>
 #include <arpa/inet.h>
 //#include <direct.h>
@@ -72,34 +74,32 @@ class Http_Parser {
 
 public:
 
-  typedef struct _line {
-    string one = "";
-    string two;
-    string three;
-  }Line;
-
   typedef struct _message {
-    Line *first_Line;
+    string one = "";
+    string two = "";
+    string three = "";
     string header;
     string body;
   }message;
 
 public:
-  Http_Parser();  //init
+  Http_Parser();
   void init(message *msg);
   string Get_Data(string filepath);
-  string Get_Line(string data);
+  string* Substr_First_Line(string line);
+  string Content_Type(string header);
+  string Content_Length(string header);
+  void parse(string data, message *request_Message, message *response_Message);
+  bool request_Option(string method);
   void pcap_run();
   void task(pcap_t *handle, struct pcap_pkthdr *header, u_char *packet);
-  void Reqeust_Line_Parser(string requestLine);
-  bool request_Option(string method);
-  void message_Parser();
   void err_print();
 
 public:
   ETH_HDR *ethhdr = new ETH_HDR;
   IP_HDR *iphdr = new IP_HDR;
   TCP_HDR *tcphdr = new TCP_HDR;
+  string tmp[3];
 
 };
 
