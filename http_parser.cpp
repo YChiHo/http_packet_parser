@@ -43,6 +43,7 @@ string Http_Parser::Get_Data(string filepath) {
 
 	return read_data;
 }
+
 // 싹둑 first line
 string* Http_Parser::Substr_First_Line(string line){
 	int status;
@@ -60,18 +61,23 @@ string* Http_Parser::Substr_First_Line(string line){
 	}
 	return tmp;
 }
+
 // get content-length
 string Http_Parser::Content_Length(string header){
 	std::string data = header;
 	int lo, lenstr;
 	string length;
-	lo = data.find("Content-Length: ");
-	lenstr = strlen("Content-Length: ");
-	data.erase(0, lo);
-	lo = data.find("\r\n");
-	length = data.substr(lenstr, lo-lenstr);
-	return length;
+	if ((lo = data.find("Content-Length: ")) > 0){
+		lenstr = strlen("Content-Length: ");
+		data.erase(0, lo);
+		lo = data.find("\r\n");
+		length = data.substr(lenstr, lo-lenstr);
+		return length;
+	}
+	else
+		return "0";
 }
+
 // get content-type
 string Http_Parser::Content_Type(string header){			// need Modify
 	string data = header;
@@ -103,6 +109,7 @@ string Http_Parser::Accept(string header){
 	return str;
 }
 
+// First_Line, Header, Body parse
 void Http_Parser::parse(string data, message *request_Message, message *response_Message) {
 	int locate;
 	string line;
@@ -157,13 +164,14 @@ void Http_Parser::parse(string data, message *request_Message, message *response
 	}
 }
 
+// Post or Get
 int Http_Parser::PostOrGet(string str){
 	if (	strncmp(str.c_str(), "POST ", sizeof("POST ")) == 0) return 1;
 	else if(strncmp(str.c_str(), "GET "	, sizeof("GET "	)) == 0) return 2;
 	else return 0;
 }
 
-
+// URL Decode
 string Http_Parser::Urldecode(string str){
     string ret;
     char ch;
@@ -185,17 +193,93 @@ string Http_Parser::Urldecode(string str){
     return ret;
 }
 
+// json parser
+void Http_Parser::json_parser(string msg){
+	int lo, index = 0;
+	Http_Parser::json json_[100];
+	//json parse
+	lo = msg.find("{");
+	msg.erase(0, lo + 2);
+
+	while(msg.length() != 0){
+		lo = msg.find('"');
+
+		if(msg[lo+1] == ':'){
+			json_[index].key = msg.substr(0, lo);
+			msg.erase(0, lo + 3);
+		}
+		lo = msg.find('"');
+		if(msg[lo+1] == ','){
+			json_[index].value = msg.substr(0, lo);
+			msg.erase(0, lo + 3);
+		}
+		else if(msg[lo+1] == '}'){
+			json_[index].value = msg.substr(0, lo);
+			msg.clear();	
+		}
+		else{
+			lo = msg.find(',');
+			json_[index].value = msg.substr(0, lo - 1);
+			msg.erase(0, lo + 2);
+		}
+		if( json_[index].key == "subject" 		||
+			json_[index].key == "body" 			||
+			json_[index].key == "to" 			||
+			json_[index].key == "cc" 			||
+			json_[index].key == "bcc" 			||
+			json_[index].key == "from" 			||
+			json_[index].key == "file_list" 	||
+			json_[index].key == "email"   )
+			cout << json_[index].key << " : " << json_[index].value << endl;
+		index++;
+	}
+}
+
+// field-value parser
+void Http_Parser::fv_parser(string msg){
+	int lo, index = 0;
+	string tmp_data = "";
+	Http_Parser::f_v fv[100];
+	while( 1 ){
+		//  &
+		lo = msg.find('&');
+		if (lo <= 0) break;
+		tmp_data = msg.substr(0, lo);
+		msg.erase(0, lo + 1);
+		//  field
+		lo = tmp_data.find('=');
+		fv[index].field = tmp_data.substr(0, lo);
+		tmp_data.erase(0, lo + 1);
+		//  value
+		fv[index].value = tmp_data;
+		tmp_data.clear();
+		if( fv[index].field == "TO" 			||
+			fv[index].field == "CC" 			||
+			fv[index].field == "BCC" 			||
+			fv[index].field == "SUBJECT" 		||
+			fv[index].field == "PID" 			||
+			fv[index].field == "BODY" 			||
+			fv[index].field == "from" 			||
+			fv[index].field == "USER_FROM_NAME" ||
+			fv[index].field == "HOST" )
+			cout << fv[index].field << " : " << fv[index].value << endl;
+		index ++;
+	}
+}
+
+// check request option
 bool Http_Parser::request_Option(string method) {
 	if (method == "GET " 	||
 		method == "POST " 	||
 		method == "HEAD " 	||
 		method == "PUT " 	||
-		method == "DELETE " ||
+		method == "DELETE "	||
 		method == "TRACE ")
 		return true;
 	else return false;
 }
 
+/* modify tcp payload ----------------------------------------------------------------- */
 void Http_Parser::pcap_run() {
 	pcap_t *handle;																	/* Session handle				 */
 	u_char *packet;
@@ -264,14 +348,13 @@ void Http_Parser::err_print(){
  		cerr.rdbuf(orig);								// restore origin stream buffer
 		cerr.rdbuf();
 }
+/* ------------------------------------------------------------------------------------ */
 
 // running function
 void run(string filename) {
 	int tmp;
 	int lo, index = 0;
 	string tmp_data = "";
-	Http_Parser::json json_[100];
-	Http_Parser::f_v fv[100];
 
 	Http_Parser hp;
 	Http_Parser::message request_Message;
@@ -283,82 +366,23 @@ void run(string filename) {
 	tmp_data.clear();
 	//POST == 1 GET == 2 OTHERS == 0
 	if((tmp = hp.PostOrGet(request_Message.one)) == 1){
+		// POST
 		// Nate Mail request message.
 		if(strncmp(request_Message.two.c_str(), "/app/newmail/send/send/ ", sizeof("/app/newmail/send/send/ ")) == 0){
 			if(strncmp(hp.Content_Type(request_Message.header).c_str(), "urlencoded", sizeof("urlencoded")) == 0){
 				request_Message.body = hp.Urldecode(request_Message.body);
-				//json parse
-				lo = request_Message.body.find("{");
-				request_Message.body.erase(0, lo + 2);
-
-				while(request_Message.body.length() != 0){
-					lo = request_Message.body.find('"');
-
-					if(request_Message.body[lo+1] == ':'){
-						json_[index].key = request_Message.body.substr(0, lo);
-						request_Message.body.erase(0, lo + 3);
-					}
-					lo = request_Message.body.find('"');
-					if(request_Message.body[lo+1] == ','){
-						json_[index].value = request_Message.body.substr(0, lo);
-						request_Message.body.erase(0, lo + 3);
-					}
-					else if(request_Message.body[lo+1] == '}'){
-						json_[index].value = request_Message.body.substr(0, lo);
-						request_Message.body.clear();	
-					}
-					else{
-						lo = request_Message.body.find(',');
-						json_[index].value = request_Message.body.substr(0, lo - 1);
-						request_Message.body.erase(0, lo + 2);
-					}
-					if( json_[index].key == "subject" 		||
-						json_[index].key == "body" 			||
-						json_[index].key == "to" 			||
-						json_[index].key == "cc" 			||
-						json_[index].key == "bcc" 			||
-						json_[index].key == "from" 			||
-						json_[index].key == "file_list" 	||
-						json_[index].key == "email"   )
-						cout << json_[index].key << " : " << json_[index].value << endl;
-					index++;
-				}
-			}
-			else{
-				cout << "Sorry Not matched urlencoded." <<endl;
+				hp.json_parser(request_Message.body);
 			}
 		}
 		// Nate Mail response message.
-		
+
+
+
 		// Daum Mail request message.
 		if(strncmp(request_Message.two.c_str(), "/hanmailex/SendMail.daum?tabIndex=1&method=autoSave ", sizeof("/hanmailex/SendMail.daum?tabIndex=1&method=autoSave ")) == 0){
 			if(strncmp(hp.Content_Type(request_Message.header).c_str(), "urlencoded", sizeof("urlencoded")) == 0){
 				request_Message.body = hp.Urldecode(request_Message.body);
-				while( 1 ){
-					//  &
-					lo = request_Message.body.find('&');
-					if (lo <= 0) break;
-					tmp_data = request_Message.body.substr(0, lo);
-					request_Message.body.erase(0, lo + 1);
-					//  field
-					lo = tmp_data.find('=');
-					fv[index].field = tmp_data.substr(0, lo);
-					tmp_data.erase(0, lo + 1);
-					//  value
-					fv[index].value = tmp_data;
-					tmp_data.clear();
-					if( fv[index].field == "TO" 			||
-						fv[index].field == "CC" 			||
-						fv[index].field == "BCC" 			||
-						fv[index].field == "SUBJECT" 		||
-						fv[index].field == "PID" 			||
-						fv[index].field == "BODY" 			||
-						fv[index].field == "from" 			||
-						fv[index].field == "USER_FROM_NAME" ||
-						fv[index].field == "HOST" )
-						cout << fv[index].field << " : " << fv[index].value << endl;
-					index ++;
-				}
+				hp.fv_parser(request_Message.body);
 			}
 			else{
 				cout << "Sorry Not matched urlencoded." <<endl;
@@ -368,20 +392,22 @@ void run(string filename) {
 		
 	}
 	else if(tmp = 2){
-		//GET
+		// GET
+		// response body gzip uncompress
+		cout << response_Message.body <<endl;
 	}
 	else{
-		//OTHERS
+		// OTHERS
 		cout << "Sorry, I can't. Bye" << endl;
 	}
 }
 
 int main() {
 	string filename;
-		//while (1){
-			cout << "Insert File Name : ";
+		while (1){
+			cout << "\nInsert File Name : ";
 			cin >> filename;
 			run(filename);
-		//}
+		}
 }
 

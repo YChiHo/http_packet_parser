@@ -93,6 +93,8 @@ public:
   void parse(string data, message *request_Message, message *response_Message);
   int PostOrGet(string str);
   string Urldecode(string str);
+  void json_parser(string msg);
+  void fv_parser(string msg);
   bool request_Option(string method);
   void pcap_run();
   void task(pcap_t *handle, struct pcap_pkthdr *header, u_char *packet);
@@ -108,13 +110,11 @@ public:
     string key;
     string value;
   }json;
-  
+
   typedef struct _f_v{
     string field;
     string value;
   }f_v;
 
 };
-
-
 
