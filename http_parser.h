@@ -87,9 +87,12 @@ public:
   void init(message *msg);
   string Get_Data(string filepath);
   string* Substr_First_Line(string line);
-  string Content_Type(string header);
   string Content_Length(string header);
+  string Content_Type(string header);
+  string Accept(string header);
   void parse(string data, message *request_Message, message *response_Message);
+  int PostOrGet(string str);
+  string Urldecode(string str);
   bool request_Option(string method);
   void pcap_run();
   void task(pcap_t *handle, struct pcap_pkthdr *header, u_char *packet);
@@ -100,6 +103,16 @@ public:
   IP_HDR *iphdr = new IP_HDR;
   TCP_HDR *tcphdr = new TCP_HDR;
   string tmp[3];
+
+  typedef struct _json {
+    string key;
+    string value;
+  }json;
+  
+  typedef struct _f_v{
+    string field;
+    string value;
+  }f_v;
 
 };
 

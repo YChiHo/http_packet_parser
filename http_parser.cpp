@@ -43,7 +43,7 @@ string Http_Parser::Get_Data(string filepath) {
 
 	return read_data;
 }
-
+// 싹둑 first line
 string* Http_Parser::Substr_First_Line(string line){
 	int status;
 	if(line.find(" ") != string::npos ){
@@ -60,7 +60,7 @@ string* Http_Parser::Substr_First_Line(string line){
 	}
 	return tmp;
 }
-
+// get content-length
 string Http_Parser::Content_Length(string header){
 	std::string data = header;
 	int lo, lenstr;
@@ -72,9 +72,9 @@ string Http_Parser::Content_Length(string header){
 	length = data.substr(lenstr, lo-lenstr);
 	return length;
 }
-
+// get content-type
 string Http_Parser::Content_Type(string header){			// need Modify
-	std::string data = header;
+	string data = header;
 	int lo, lenstr;
 	string length;
 	lo = data.find("Content-Type: ");
@@ -90,6 +90,17 @@ string Http_Parser::Content_Type(string header){			// need Modify
 	else
 		return "sorry";
 	return length;
+}
+
+string Http_Parser::Accept(string header){
+	string data = header;
+	int lo;
+	string str;
+	lo = data.find("Accept: ");
+	data.erase(0, lo);
+	lo = data.find("\r\n");
+	str = data.substr(0, lo);
+	return str;
 }
 
 void Http_Parser::parse(string data, message *request_Message, message *response_Message) {
@@ -115,7 +126,7 @@ void Http_Parser::parse(string data, message *request_Message, message *response
 		//rq body
 		locate = stoi(Content_Length(request_Message->header));
 		if( locate != 0 ){
-			request_Message->body = data.substr(0, locate + 1);
+			request_Message->body = data.substr(0, locate);
 			data.erase(0, locate);
 		}
 
@@ -144,6 +155,34 @@ void Http_Parser::parse(string data, message *request_Message, message *response
 			data.erase(0, locate + 1);
 		}
 	}
+}
+
+int Http_Parser::PostOrGet(string str){
+	if (	strncmp(str.c_str(), "POST ", sizeof("POST ")) == 0) return 1;
+	else if(strncmp(str.c_str(), "GET "	, sizeof("GET "	)) == 0) return 2;
+	else return 0;
+}
+
+
+string Http_Parser::Urldecode(string str){
+    string ret;
+    char ch;
+    int i, ii, len = str.length();
+
+    for (i=0; i < len; i++){
+        if(str[i] != '%'){
+            if(str[i] == '+')
+                ret += ' ';
+            else
+                ret += str[i];
+        }else{
+            sscanf(str.substr(i + 1, 2).c_str(), "%x", &ii);
+            ch = static_cast<char>(ii);
+            ret += ch;
+            i = i + 2;
+        }
+    }
+    return ret;
 }
 
 bool Http_Parser::request_Option(string method) {
@@ -228,7 +267,11 @@ void Http_Parser::err_print(){
 
 // running function
 void run(string filename) {
+	int tmp;
+	int lo, index = 0;
 	string tmp_data = "";
+	Http_Parser::json json_[100];
+	Http_Parser::f_v fv[100];
 
 	Http_Parser hp;
 	Http_Parser::message request_Message;
@@ -237,11 +280,100 @@ void run(string filename) {
 
 	tmp_data = hp.Get_Data(filename);
 	hp.parse(tmp_data, &request_Message, &response_Message);
+	tmp_data.clear();
+	//POST == 1 GET == 2 OTHERS == 0
+	if((tmp = hp.PostOrGet(request_Message.one)) == 1){
+		// Nate Mail request message.
+		if(strncmp(request_Message.two.c_str(), "/app/newmail/send/send/ ", sizeof("/app/newmail/send/send/ ")) == 0){
+			if(strncmp(hp.Content_Type(request_Message.header).c_str(), "urlencoded", sizeof("urlencoded")) == 0){
+				request_Message.body = hp.Urldecode(request_Message.body);
+				//json parse
+				lo = request_Message.body.find("{");
+				request_Message.body.erase(0, lo + 2);
 
-	//----------------------------------- fl, rq h, rq b, fl, rs h, rs b ok//
-	//TODO : rq Header parsing ---> 
-	//body : decoding
+				while(request_Message.body.length() != 0){
+					lo = request_Message.body.find('"');
 
+					if(request_Message.body[lo+1] == ':'){
+						json_[index].key = request_Message.body.substr(0, lo);
+						request_Message.body.erase(0, lo + 3);
+					}
+					lo = request_Message.body.find('"');
+					if(request_Message.body[lo+1] == ','){
+						json_[index].value = request_Message.body.substr(0, lo);
+						request_Message.body.erase(0, lo + 3);
+					}
+					else if(request_Message.body[lo+1] == '}'){
+						json_[index].value = request_Message.body.substr(0, lo);
+						request_Message.body.clear();	
+					}
+					else{
+						lo = request_Message.body.find(',');
+						json_[index].value = request_Message.body.substr(0, lo - 1);
+						request_Message.body.erase(0, lo + 2);
+					}
+					if( json_[index].key == "subject" 		||
+						json_[index].key == "body" 			||
+						json_[index].key == "to" 			||
+						json_[index].key == "cc" 			||
+						json_[index].key == "bcc" 			||
+						json_[index].key == "from" 			||
+						json_[index].key == "file_list" 	||
+						json_[index].key == "email"   )
+						cout << json_[index].key << " : " << json_[index].value << endl;
+					index++;
+				}
+			}
+			else{
+				cout << "Sorry Not matched urlencoded." <<endl;
+			}
+		}
+		// Nate Mail response message.
+		
+		// Daum Mail request message.
+		if(strncmp(request_Message.two.c_str(), "/hanmailex/SendMail.daum?tabIndex=1&method=autoSave ", sizeof("/hanmailex/SendMail.daum?tabIndex=1&method=autoSave ")) == 0){
+			if(strncmp(hp.Content_Type(request_Message.header).c_str(), "urlencoded", sizeof("urlencoded")) == 0){
+				request_Message.body = hp.Urldecode(request_Message.body);
+				while( 1 ){
+					//  &
+					lo = request_Message.body.find('&');
+					if (lo <= 0) break;
+					tmp_data = request_Message.body.substr(0, lo);
+					request_Message.body.erase(0, lo + 1);
+					//  field
+					lo = tmp_data.find('=');
+					fv[index].field = tmp_data.substr(0, lo);
+					tmp_data.erase(0, lo + 1);
+					//  value
+					fv[index].value = tmp_data;
+					tmp_data.clear();
+					if( fv[index].field == "TO" 			||
+						fv[index].field == "CC" 			||
+						fv[index].field == "BCC" 			||
+						fv[index].field == "SUBJECT" 		||
+						fv[index].field == "PID" 			||
+						fv[index].field == "BODY" 			||
+						fv[index].field == "from" 			||
+						fv[index].field == "USER_FROM_NAME" ||
+						fv[index].field == "HOST" )
+						cout << fv[index].field << " : " << fv[index].value << endl;
+					index ++;
+				}
+			}
+			else{
+				cout << "Sorry Not matched urlencoded." <<endl;
+			}
+		}
+		// Daum Mail response message.
+		
+	}
+	else if(tmp = 2){
+		//GET
+	}
+	else{
+		//OTHERS
+		cout << "Sorry, I can't. Bye" << endl;
+	}
 }
 
 int main() {
@@ -252,3 +384,4 @@ int main() {
 			run(filename);
 		//}
 }
+
