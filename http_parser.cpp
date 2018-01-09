@@ -3,71 +3,61 @@
 Http_Parser::Http_Parser() {
 }
 
-// init variable
-void Http_Parser::init(message *msg) {
-	try {
-		// msg->first_Line->one = "";
-		// msg->first_Line->two = "";
-		// msg->first_Line->three = "";
-		// msg->header = "";
-		// msg->body = "";
-	}
-	catch (int Exception) {
+// read data
+void Http_Parser::Get_Data(string filepath, string* data) {
+
+	char buf[FILE_READ_SIZE];
+	int len;
+
+	FILE *fp = fopen(filepath.c_str(), "r");
+
+	if ( fp == NULL ) {
 		err_print();
+		fclose(fp);
 		return;
 	}
-}
-
-// read data
-string Http_Parser::Get_Data(string filepath) {
-
-	string read_data;
-	string tmp;
-	read_data.clear(); tmp.clear();
-	fstream f(filepath.c_str());
-
-	try {
-		if (f.is_open() == true) {
-			while (getline(f, tmp)) {
-				read_data += tmp;
-				read_data += "\r\n";
-			}
-			f.close();
+	else{
+		while( feof(fp) != true ){
+			len = fread(buf, sizeof(buf[0]), sizeof(buf) / sizeof(buf[0]), fp);
+			*data += buf;
+			memset(buf, 0x00, FILE_READ_SIZE);
 		}
+		fclose(fp);
 	}
-	catch (int Exception) {
-		err_print();
-		f.close();
-		return "";
-	}
-
-	return read_data;
 }
 
 // 싹둑 first line
-string* Http_Parser::Substr_First_Line(string line){
+bool Http_Parser::Substr_First_Line(string line, message *message){
+
 	int status;
-	if(line.find(" ") != string::npos ){
+	if(line.find(" ") != string::npos){
 
-		status = line.find(" ");
-		tmp[0] = line.substr(0, status + 1);
-		line.erase(0, status + 1);
+		if((status = line.find(" ")) > 0){
+			message->one = line.substr(0, status + 1);
+			line.erase(0, status + 1);
+		}
+		else
+			return false;
+		
+		if((status = line.find(" ")) > 0){
+			message->two = line.substr(0, status + 1);
+			line.erase(0, status + 1);
+		}
+		else
+			return false;
 
-		status = line.find(" ");
-		tmp[1] = line.substr(0, status + 1);
-		line.erase(0, status + 1);
-
-		tmp[2] = line;
+		if((status = line.find("\r\n")) > 0)
+			message->three = line.substr(0, status);
 	}
-	return tmp;
+	return true;
 }
 
 // get content-length
-string Http_Parser::Content_Length(string header){
+string Http_Parser::Content_Length(string header, int start, int end){
 	std::string data = header;
 	int lo, lenstr;
 	string length;
-	if ((lo = data.find("Content-Length: ")) > 0){
+	if ((lo = data.find("Content-Length: "), start, end) > 0){
 		lenstr = strlen("Content-Length: ");
 		data.erase(0, lo);
 		lo = data.find("\r\n");
@@ -83,85 +73,63 @@ string Http_Parser::Content_Type(string header){			// need Modify
 	string data = header;
 	int lo, lenstr;
 	string length;
-	lo = data.find("Content-Type: ");
-	lenstr = strlen("Content-Type: ");
-	data.erase(0, lo);
-	lo = data.find("\r\n");
-	length = data.substr(lenstr, lo-lenstr);
+	if((lo = data.find("Content-Type: ")) > 0){
+		lenstr = strlen("Content-Type: ");
+		data.erase(0, lo);
+		lo = data.find("\r\n");
+		length = data.substr(lenstr, lo-lenstr);
+	}
 
 	if(length.find("urlencoded") > 0)
 		return "urlencoded";
-	else if(length.find(""))
-		return "";
+	else if(length.find("application/json"))
+		return "json";
 	else
-		return "sorry";
-	return length;
+		return "";
 }
 
 string Http_Parser::Accept(string header){
 	string data = header;
 	int lo;
 	string str;
-	lo = data.find("Accept: ");
-	data.erase(0, lo);
-	lo = data.find("\r\n");
-	str = data.substr(0, lo);
-	return str;
+	if((lo = data.find("Accept: ")) > 0){
+		data.erase(0, lo);
+		lo = data.find("\r\n");
+		str = data.substr(0, lo);
+		return str;
+	}
+	else
+		return "";
 }
 
 // First_Line, Header, Body parse
-void Http_Parser::parse(string data, message *request_Message, message *response_Message) {
-	int locate;
+int Http_Parser::parse(string *data, message *msg, int locate) {
+
+	int lo, start_header_locate, end_header_locate;
 	string line;
-	string *tmp;
-	//rq first line
-	locate = data.find("\r\n");
-	line = data.substr(0, locate + 1);
-	tmp = Substr_First_Line(line);
-	request_Message->one = tmp[0];
-	request_Message->two = tmp[1];
-	request_Message->three = tmp[2];
-	data.erase(0, locate + 2);
 
-	if(request_Option(request_Message->one) == true){
+	//first line
+	lo = data->find("\r\n", locate);
+	line = data->substr(locate, lo + 2);
+	if(Substr_First_Line(line, msg) == true){
+		locate = lo + 2;
+		start_header_locate = lo + 2;
 
-		//rq header
-		locate = data.find("\r\n\r");
-		request_Message->header = data.substr(0, locate + 1);
-		data.erase(0, locate + 5);
+		//header
+		lo = data->find("\r\n\r\n", locate);
+		msg->header = data->substr(locate, lo - locate);
+		locate = lo + 4;
+		end_header_locate = lo + 4;
 
-		//rq body
-		locate = stoi(Content_Length(request_Message->header));
-		if( locate != 0 ){
-			request_Message->body = data.substr(0, locate);
-			data.erase(0, locate);
-		}
-
-		for(int i = 0 ; i < 3 ; i++)
-			tmp[i] = "";
-		line = "";
-
-		//rs first line
-		locate = data.find("\r\n");
-		line = data.substr(0, locate + 1);
-		tmp = Substr_First_Line(line);
-		data.erase(0, locate + 2);
-		response_Message->one = tmp[0];
-		response_Message->two = tmp[1];
-		response_Message->three = tmp[2];
-
-		//rs header
-		locate = data.find("\r\n\r");
-		response_Message->header = data.substr(0, locate + 1);
-		data.erase(0, locate + 5);
-
-		//rs body
-		locate = stoi(Content_Length(response_Message->header));
-		if( locate != 0 ){
-			response_Message->body = data.substr(0, locate + 1);
-			data.erase(0, locate + 1);
+		//body
+		if((lo = stoi(Content_Length(msg->header, start_header_locate, end_header_locate))) != 0 ){
+			msg->body = data->substr(locate, lo);
+			locate += lo;
 		}
 	}
+	else
+		return -1;
+	return locate;
 }
 
 // Post or Get
@@ -172,20 +140,20 @@ int Http_Parser::PostOrGet(string str){
 }
 
 // URL Decode
-string Http_Parser::Urldecode(string str){
+string Http_Parser::Urldecode(string *str){
     string ret;
     char ch;
-    int i, ii, len = str.length();
+    int i, ii;
 
-    for (i=0; i < len; i++){
-        if(str[i] != '%'){
-            if(str[i] == '+')
+    for (i=0; i < str->length(); i++){
+        if(str[0][i] != '%'){
+            if(str[0][i] == '+')
                 ret += ' ';
             else
-                ret += str[i];
+                ret += str[0][i];
         }else{
-            sscanf(str.substr(i + 1, 2).c_str(), "%x", &ii);
-            ch = static_cast<char>(ii);
+            sscanf(str->substr(i + 1, 2).c_str(), "%x", &ii);
+            ch = static_cast<char>(ii);		//static_cast, const_cast, reinterpret_cast, dynamic_cast
             ret += ch;
             i = i + 2;
         }
@@ -194,46 +162,25 @@ string Http_Parser::Urldecode(string str){
 }
 
 // json parser
-void Http_Parser::json_parser(string msg){
-	int lo, index = 0;
-	Http_Parser::json json_[100];
-	//json parse
-	lo = msg.find("{");
-	msg.erase(0, lo + 2);
+void Http_Parser::body_parser_1(string msg){ // number, boolean, [] check.
+	
 
-	while(msg.length() != 0){
-		lo = msg.find('"');
-
-		if(msg[lo+1] == ':'){
-			json_[index].key = msg.substr(0, lo);
-			msg.erase(0, lo + 3);
-		}
-		lo = msg.find('"');
-		if(msg[lo+1] == ','){
-			json_[index].value = msg.substr(0, lo);
-			msg.erase(0, lo + 3);
-		}
-		else if(msg[lo+1] == '}'){
-			json_[index].value = msg.substr(0, lo);
-			msg.clear();	
-		}
-		else{
-			lo = msg.find(',');
-			json_[index].value = msg.substr(0, lo - 1);
-			msg.erase(0, lo + 2);
-		}
-		if( json_[index].key == "subject" 		||
-			json_[index].key == "body" 			||
-			json_[index].key == "to" 			||
-			json_[index].key == "cc" 			||
-			json_[index].key == "bcc" 			||
-			json_[index].key == "from" 			||
-			json_[index].key == "file_list" 	||
-			json_[index].key == "email"   )
-			cout << json_[index].key << " : " << json_[index].value << endl;
-		index++;
-	}
 }
+
+		// JSON sample data
+		// { "pi": 3.141,
+		//   "happy": true,
+		//   "name": "Niels",
+		//   "nothing": null,
+		//   "answer": {
+		//     "everything": 42
+		//   },
+		//   "list": [1, 0, 2],
+		//   "object": {
+		//     "currency": "USD",
+		//     "value": 42.99
+		//   }
+		//	}
 
 // field-value parser
 void Http_Parser::fv_parser(string msg){
@@ -260,8 +207,7 @@ void Http_Parser::fv_parser(string msg){
 			fv[index].field == "PID" 			||
 			fv[index].field == "BODY" 			||
 			fv[index].field == "from" 			||
-			fv[index].field == "USER_FROM_NAME" ||
-			fv[index].field == "HOST" )
+			fv[index].field == "USER_FROM_NAME" )
 			cout << fv[index].field << " : " << fv[index].value << endl;
 		index ++;
 	}
@@ -351,49 +297,48 @@ void Http_Parser::err_print(){
 /* ------------------------------------------------------------------------------------ */
 
 // running function
-void run(string filename) {
+void Http_Parser::run(string filename) {
 	int tmp;
 	int lo, index = 0;
-	string tmp_data = "";
+	string data;
 
-	Http_Parser hp;
-	Http_Parser::message request_Message;
-	Http_Parser::message response_Message;
-	hp.init(&request_Message);	hp.init(&response_Message);
+	message request_Message;
+	message response_Message;
 
-	tmp_data = hp.Get_Data(filename);
-	hp.parse(tmp_data, &request_Message, &response_Message);
-	tmp_data.clear();
+	data.clear();
+	Get_Data(filename, &data);
+	lo = parse(&data, &request_Message);
+	lo = parse(&data, &response_Message, lo);
+
 	//POST == 1 GET == 2 OTHERS == 0
-	if((tmp = hp.PostOrGet(request_Message.one)) == 1){
+	if((tmp = PostOrGet(request_Message.one)) == 1){
 		// POST
 		// Nate Mail request message.
-		if(strncmp(request_Message.two.c_str(), "/app/newmail/send/send/ ", sizeof("/app/newmail/send/send/ ")) == 0){
-			if(strncmp(hp.Content_Type(request_Message.header).c_str(), "urlencoded", sizeof("urlencoded")) == 0){
-				request_Message.body = hp.Urldecode(request_Message.body);
-				hp.json_parser(request_Message.body);
+		if(request_Message.two.compare(NATE_MAIL) == 0){
+			if(Content_Type(request_Message.header).find("urlencoded") == 0){
+				request_Message.body = Urldecode(&request_Message.body);
+				// cout << request_Message.body << endl;
+				body_parser_1(request_Message.body);
 			}
 		}
+
 		// Nate Mail response message.
-
-
+		// if(Content_Type(response_Message.header).find("json") > 0){
+			// body_parser_1(response_Message.body);
+		// }
 
 		// Daum Mail request message.
-		if(strncmp(request_Message.two.c_str(), "/hanmailex/SendMail.daum?tabIndex=1&method=autoSave ", sizeof("/hanmailex/SendMail.daum?tabIndex=1&method=autoSave ")) == 0){
-			if(strncmp(hp.Content_Type(request_Message.header).c_str(), "urlencoded", sizeof("urlencoded")) == 0){
-				request_Message.body = hp.Urldecode(request_Message.body);
-				hp.fv_parser(request_Message.body);
-			}
-			else{
-				cout << "Sorry Not matched urlencoded." <<endl;
+		if(request_Message.two.compare(DAUM_MAIL) == 0){
+			if(Content_Type(request_Message.header).find("urlencoded") > 0){
+				request_Message.body = Urldecode(&request_Message.body);
+				fv_parser(request_Message.body);
 			}
 		}
 		// Daum Mail response message.
-		
 	}
 	else if(tmp = 2){
 		// GET
-		// response body gzip uncompress
+		// body gzip uncompress
 		cout << response_Message.body <<endl;
 	}
 	else{
@@ -403,11 +348,11 @@ void run(string filename) {
 }
 
 int main() {
+	Http_Parser hp;
 	string filename;
-		while (1){
+		// while (1){
 			cout << "\nInsert File Name : ";
 			cin >> filename;
-			run(filename);
-		}
+			hp.run(filename);
+		// }
 }
-
