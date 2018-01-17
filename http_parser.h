@@ -1,6 +1,7 @@
 #ifndef HTTP_PARSER_H
 #define HTTP_PARSER_H
 #include <iostream>
+#include <thread>
 #include <algorithm>
 #include <fstream>
 #include <string>
@@ -11,24 +12,31 @@
 #include <string.h>
 #include <unistd.h>
 #include <pcap/pcap.h>
-#include <arpa/inet.h>
+#include <zlib.h>
 #include "json/json.h"
-//#include <direct.h>
 #endif // HTTP_PARSER_H
+
+#ifdef __linux__
+#include <arpa/inet.h>
+#endif
+
+#ifdef _WIN32_
+#define WPCAP
+#pragma comment(lib, "wpcap.lib")
+#endif
 
 #define PCAP_OPENFLAG_PROMISCUOUS 1
 #define TYPE_IP 0x0800
 #define TYPE_TCP 0x06
 
 #define FILE_READ_SIZE 4096
+#define GZ_SIZE 8192
 
 #define NATE_MAIL "/app/newmail/send/send/ "
 #define DAUM_MAIL "/hanmailex/SendMail.daum?tabIndex=1&method=autoSave "
+#define JSON_FILE_NAME "test.json" // "/root/Document/http_parser/"
 
-#ifdef _WIN32_
-#define WPCAP
-#pragma comment(lib, "wpcap.lib")
-#endif
+enum{OTHERS, POST, GET};
 using namespace std;
 
 typedef struct ip_address{
@@ -92,7 +100,7 @@ public:
   typedef struct _type1 {
     string key;
     string value;
-  }type1;
+  }json;
 
   typedef struct _f_v{
     string field;
@@ -101,21 +109,23 @@ public:
 
 public:
   Http_Parser();
-  void Get_Data(string filepath, string* data);
+  bool Get_Data(string filepath, string* data);
   bool Substr_First_Line(string line, message *message);
   string Content_Length(string header, int start, int end);
   string Content_Type(string header);
   string Accept(string header);
-  int parse(string *data, message *msg, int locate = 0);
-  int PostOrGet(string str);
+  int Parse(string *data, message *msg, int locate = 0);
+  int Post_Or_Get(string str);
   string Urldecode(string *str);
-  void body_parser_1(string msg);
-  void fv_parser(string msg);
-  bool request_Option(string method);
-  void pcap_run();
-  void task(pcap_t *handle, struct pcap_pkthdr *header, u_char *packet);
-  void err_print();
-  void run(string filename);
+  void Body_Parser_1(string msg);
+  void Json_Parser(string msg);
+  void Fv_Parser(string msg);
+  bool Request_Option(string method);
+  void Gzip_Uncompress(string filename);
+  void Pcap_Run();
+  void Task(pcap_t *handle, struct pcap_pkthdr *header, u_char *packet);
+  void Err_Print();
+  void Run();
 
 public:
   ETH_HDR *ethhdr = new ETH_HDR;
